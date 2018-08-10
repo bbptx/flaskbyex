@@ -3,20 +3,25 @@ from flask import Flask
 from flask import render_template
 from flask import request
 import json
+import datetime
+import dateparser
+import string
+
 
 app = Flask(__name__)
 DB = DBHelper()
+categories = ["mugging", "break-in"]
 
 
 @app.route("/")
-def home():
+def home(error_message=None):
 	try:
 		crimes = DB.get_all_crimes() # gets records as dictionaries
 		crimes = json.dumps(crimes)	# converts to json
 	except Exception as e:
 		print (e)
 		data = None
-	return render_template("home.html", crimes=crimes)
+	return render_template("home.html", crimes=crimes, categories=categories, error_message=error_message)
 	
 	
 @app.route("/add", methods=["POST"])
@@ -38,14 +43,36 @@ def clear():
 	
 @app.route("/submitcrime", methods=['POST'])
 def submitcrime():
-    category = request.form.get("category")
-    date = request.form.get("date")
-    latitude = request.form.get("latitude")
-    longitude = request.form.get("longitude")
-    description = request.form.get("description")
-    
-    DB.add_crime(category, date, latitude, longitude, description)
-    return home()
+	category = request.form.get("category")
+	if category not in categories:
+		return home()
+	
+	date = format_date(request.form.get("date"))
+	if not date:
+		return home("Invalid date. Please use yyyy-mm-dd format")
+	try:
+		latitude = float(request.form.get("latitude"))
+		longitude = float(request.form.get("longitude"))
+	except ValueError:
+		return home()
+	description = request.form.get("description")
+	description = sanitize_string(request.form.get("description"))
+	
+	DB.add_crime(category, date, latitude, longitude, description)
+	return home()
+
+def format_date(userdate):
+	date = dateparser.parse(userdate)
+	try:
+		return datetime.datetime.strftime(date, "%Y-%m-%d")
+	except TypeError:
+		return None
+
+def sanitize_string(userinput):
+	whitelist = string.ascii_letters + string.digits + " !?$.,;:-'()&"
+	return "".join(filter(lambda x: x in whitelist, userinput))
+
+
 
     
 if __name__=="__main__":
